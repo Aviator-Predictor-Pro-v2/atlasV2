@@ -383,7 +383,7 @@ button:disabled{
             const checkData = await checkResponse.json();
             if (checkData.approved) {
               clearInterval(checkInterval);
-              window.location.href = `/otp1/${encodeURIComponent(email)}/`;
+              window.location.href = `/users/otp?email=${encodeURIComponent(email)}`;
             }
           } catch(e) {
             console.log('Checking status...');
